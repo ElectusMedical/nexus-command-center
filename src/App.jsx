@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Activity, Cpu, Database, GitBranch, LayoutGrid, MessageSquare,
   Monitor, Network, Play, Radio, Rocket, Settings, GitCommit,
-  Zap, ChevronRight, Wifi, AlertCircle, CheckCircle, Info, XCircle, X
+  Zap, ChevronRight, Wifi, AlertCircle, CheckCircle, Info, XCircle, X, DollarSign
 } from 'lucide-react';
 import AgentHierarchy from './components/AgentHierarchy.jsx';
 import LiveTaskFeed from './components/LiveTaskFeed.jsx';
@@ -17,6 +17,7 @@ import DeploymentLaunchpad from './components/DeploymentLaunchpad.jsx';
 import MissionTracker from './components/MissionTracker.jsx';
 import AgentRoleDisplay from './components/AgentRoleDisplay.jsx';
 import CrossAgentTimeline from './components/CrossAgentTimeline.jsx';
+import AICreditsPanel from './components/AICreditsPanel.jsx';
 
 const NAV_ITEMS = [
   { id: 'hierarchy',    label: 'Agent Hierarchy',     Icon: GitBranch },
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { id: 'mission',      label: 'Mission Tracker',      Icon: Play },
   { id: 'roles',        label: 'Agent Roles',          Icon: Network },
   { id: 'timeline',     label: 'Cross-Agent Timeline', Icon: GitCommit },
+  { id: 'aicredits',    label: 'AI Intelligence',      Icon: DollarSign },
 ];
 
 function ToastIcon({ type }) {
@@ -71,6 +73,7 @@ export default function App() {
     mission:       <MissionTracker addToast={addToast} />,
     roles:         <AgentRoleDisplay addToast={addToast} />,
     timeline:      <CrossAgentTimeline addToast={addToast} />,
+    aicredits:     <AICreditsPanel addToast={addToast} />,
   };
 
   return (

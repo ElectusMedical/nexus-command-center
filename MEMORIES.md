@@ -1,53 +1,107 @@
-# MEMORIES.md — NEXUS // AI Agent Command Center
-> Agent Zero Context File — Updated: 2026-03-31
+# MEMORIES.md — NEXUS Command Center
+> Agent Zero Context File — Updated: 2026-04-10
 
 ## 🎯 Current Sprint Goal
-Phase 1: Full UI scaffold with all 13 panels using mock data — COMPLETE ✅
-Next: Wire up real data connections starting with Agent Status Cards + Live Task Feed
+Phase 1 complete. 14 panels live. AI Provider Intelligence panel wired to real APIs via secure Express proxy.
 
 ## ✅ Last Session Summary
-2026-03-31: Built complete NEXUS Command Center from scratch.
-- React + Vite + Tailwind CSS project created at /a0/usr/workdir/nexus-command-center/
-- All 13 panels built with rich mock data
-- Production build successful (460KB JS, 35KB CSS)
-- GitHub repo created: https://github.com/ElectusMedical/nexus-command-center
-- Live preview via cloudflared tunnel (temporary)
-- Awaiting Cloudflare Pages deployment (needs CF_API_TOKEN + CF_ACCOUNT_ID)
+**2026-04-10:**
+- Added 14th panel: AI Provider Intelligence (AICreditsPanel.jsx)
+- Built secure Express proxy server (server.js) serving dist/ + /api/ai-credits + /api/health
+- All 4 AI provider APIs integrated: OpenRouter, OpenAI, Anthropic, Gemini (2 keys)
+- All endpoints confirmed HTTP 200 through cloudflared tunnel
+- New build: index-CIQN_Bm4.css + index-CYqLzQRi.js
 
-## 🚧 Active Blockers
-- CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID not in environment
-- Need to add to /a0/usr/workdir/.env to enable `wrangler pages deploy`
-- OR user can connect GitHub repo manually in Cloudflare Pages dashboard
+## 🌐 Live URLs
+- **Cloudflared Tunnel (temp):** https://lung-jeff-importance-chip.trycloudflare.com
+- **GitHub Repo:** https://github.com/ElectusMedical/nexus-command-center
+- **Local server:** http://localhost:4200
 
-## 🏗️ Architecture Decisions
-- Plain JSX (not TypeScript) for faster iteration
-- @xyflow/react for Agent Hierarchy node graph
-- @dnd-kit for Mission Tracker Kanban drag-and-drop
-- Mock data centralized in src/data/mockData.js
-- All 13 panels route through App.jsx panel state
-- Cloudflare Pages will serve dist/ folder (Vite build output)
+## 🏗️ Architecture
 
-## 📋 Backlog (Priority Order)
-1. Add CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID to .env → deploy to Pages
-2. Wire Agent Status Cards to real Agent Zero API
-3. Wire Live Task Feed to real task events (WebSocket or polling)
-4. Wire Resource Monitor to real VPS metrics (server-side endpoint needed)
-5. Wire n8n Comms Panel to real n8n webhook logs
-6. Wire Memory Inspector to real Agent Zero memory API
-7. Wire Deployment Launchpad to real Dokploy status API
-8. Add GitHub Actions CI/CD: push → Cloudflare Pages auto-deploy
+### Stack
+- React 18 + Vite 6 + Tailwind CSS (JSX, not TypeScript)
+- Express 5.x proxy server (server.js) — reads /a0/usr/workdir/.env
+- Served on port 4200 via `node server.js`
+- Tunnelled via cloudflared → trycloudflare.com URL
+
+### How to Restart Server
+```bash
+cd /a0/usr/workdir/nexus-command-center
+fuser -k 4200/tcp 2>/dev/null
+node server.js &
+# Then start cloudflared:
+cloudflared tunnel --url http://localhost:4200 > /tmp/nexus_tunnel.log 2>&1 &
+grep -o 'https://[a-z0-9-]*.trycloudflare.com' /tmp/nexus_tunnel.log
+```
+
+### How to Rebuild
+```bash
+cd /a0/usr/workdir/nexus-command-center
+npm run build
+# Restart server after build
+```
+
+## 🔐 Security Architecture
+- 4 AI provider API keys stored in /a0/usr/workdir/.env ONLY
+- Keys are loaded by server.js (server-side) via dotenv
+- Frontend (React) polls /api/ai-credits — keys NEVER sent to browser
+- Keys must NOT be shared with sub-agents (Moltis, Hermes, or any other agent)
+- .env is gitignored — keys never in GitHub
+
+## 🔑 API Keys (names only — values in .env)
+- OPENAI_API_KEY ✓
+- ANTHROPIC_API_KEY ✓
+- GEMINI_API_KEY ✓ (primary)
+- GEMINI_API_KEY_2 ✓ (secondary)
+- OPENROUTER_API_KEY ✓
+
+## 📊 Panel Inventory (14 panels)
+| # | Panel | Component | Data |
+|---|-------|-----------|------|
+| 1 | Agent Hierarchy | AgentHierarchy.jsx | mock |
+| 2 | Live Task Feed | LiveTaskFeed.jsx | mock+sim |
+| 3 | Agent Status Cards | AgentStatusCards.jsx | mock+sim |
+| 4 | Task Queue Manager | TaskQueueManager.jsx | mock |
+| 5 | n8n Comms Bridge | N8nCommsPanel.jsx | mock |
+| 6 | Memory Inspector | MemoryInspector.jsx | mock |
+| 7 | Resource Monitor | ResourceMonitor.jsx | mock+sim |
+| 8 | One-Click Controls | OneClickControls.jsx | actions |
+| 9 | Notifications | NotificationSystem.jsx | sim |
+| 10 | Deployment Launchpad | DeploymentLaunchpad.jsx | mock |
+| 11 | Mission Tracker | MissionTracker.jsx | dnd-kit |
+| 12 | Agent Role Display | AgentRoleDisplay.jsx | mock |
+| 13 | Cross-Agent Timeline | CrossAgentTimeline.jsx | mock |
+| 14 | AI Intelligence | AICreditsPanel.jsx | **LIVE** |
+
+## 🚧 Polling Intervals (AI Credits Panel)
+| Provider | Interval | API |
+|----------|----------|-----|
+| OpenRouter | 2 min | /api/v1/auth/key — credits + usage |
+| OpenAI | 10 min | /v1/dashboard/billing/* — limits + usage |
+| Anthropic | 15 min | /v1/models — key validity only (no billing API) |
+| Gemini | 10 min | /v1beta/models — key validity only (no billing API) |
+
+## 📋 Phase 2 Backlog
+1. Wire Agent Status Cards to real Agent Zero API
+2. Wire Live Task Feed to real task events (WebSocket/polling)
+3. Wire Resource Monitor to VPS metrics endpoint
+4. Wire n8n Comms Panel to n8n webhook logs
+5. Wire Memory Inspector to Agent Zero memory API
+6. Wire Deployment Launchpad to Dokploy status API
+7. GitHub Actions CI/CD → auto-deploy to CF Pages on push
+8. Add Cloudflare Pages permanent deployment (needs CF_API_TOKEN + CF_ACCOUNT_ID)
 
 ## 🔧 Technical Notes
-- Local project: /a0/usr/workdir/nexus-command-center/
-- GitHub: https://github.com/ElectusMedical/nexus-command-center (public, main branch)
-- Build: cd /a0/usr/workdir/nexus-command-center && npm run build
-- Preview: python3 -m http.server 4200 --directory dist/
-- Tunnel: cloudflared tunnel --url http://localhost:4200
-- Deploy cmd: export CLOUDFLARE_API_TOKEN=xxx && export CLOUDFLARE_ACCOUNT_ID=xxx && wrangler pages deploy dist/ --project-name nexus-command-center
-- Design: #0A0E1A bg, #00D4FF cyan accent, JetBrains Mono typography
-- Separate from: /a0/usr/workdir/nexus/ (older TypeScript version, different project)
+- Node.js v22.22.0 installed
+- cloudflared binary: /usr/local/bin/cloudflared (v2026.3.0) — may need redownload on container restart
+- Express 5 requires `app.use()` for catch-all SPA fallback (NOT `app.get('*')`)
+- Build creates ES modules (type: module in package.json)
+- dotenv loaded from explicit path: resolve('/a0/usr/workdir/.env')
+- Gemini has 2 API keys (GEMINI_API_KEY + GEMINI_API_KEY_2) shown as KEY 1 / KEY 2 in panel
 
-## 📝 Open Questions
-- Should we enable GitHub Actions for auto-deploy on push to main?
-- Which real API endpoints should Agent Status Cards poll first?
-- Should the n8n Comms Panel use webhooks or polling?
+## 📝 Known Issues
+- Cloudflared tunnel URL changes every restart (temporary URLs)
+- For permanent URL: connect GitHub repo to Cloudflare Pages via dashboard
+- OpenAI billing API: /v1/dashboard/billing/* may require specific plan tier
+- Anthropic + Gemini have NO public billing API — only key validity shown
