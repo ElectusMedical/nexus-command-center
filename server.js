@@ -1,32 +1,42 @@
 /**
  * NEXUS Command Center — Secure API Proxy Server
  * Serves the React dist/ bundle AND proxies AI provider billing APIs.
- * API keys are loaded from .env — NEVER sent to the frontend.
+ * API keys are loaded from environment variables — NEVER sent to the frontend.
  *
  * Security: Keys live in process.env only. No key ever appears in
  * any response body. CORS restricted. Rate-limit safe polling intervals
  * enforced by frontend (2/10/10/15 min per provider).
+ *
+ * Deployment: Works locally (reads .env file) and in Docker/Dokploy
+ * (reads environment variables set in Dokploy UI — no .env file needed).
  */
 
 import dotenv from 'dotenv';
 import { resolve } from 'path';
-dotenv.config({ path: resolve('/a0/usr/workdir/.env') });
-import express from 'express';
-import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+// Try local .env first, then workdir fallback — silently ignore if neither exists
+// In Docker/Dokploy, keys come from process.env directly (set in Dokploy UI)
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const app = express();
-const PORT = 4200;
+dotenv.config({ path: join(__dirname, '.env') });
+dotenv.config({ path: resolve('/a0/usr/workdir/.env') });
 
-// ── CORS: allow same-origin + localhost dev ──────────────────────────────────
+import express from 'express';
+import cors from 'cors';
+
+const app = express();
+const PORT = parseInt(process.env.PORT || '4200', 10);
+
+// ── CORS: allow same-origin + localhost dev + Hostinger + Cloudflare ──────────
 app.use(cors({
   origin: [
     /localhost/,
     /127\.0\.0\.1/,
     /\.trycloudflare\.com$/,
-    /\.pages\.dev$/
+    /\.pages\.dev$/,
+    /\.hstgr\.cloud$/,
+    /command\.srv1411591\.hstgr\.cloud/
   ],
   methods: ['GET'],
 }));
@@ -54,7 +64,7 @@ async function fetchOpenRouter() {
     const res = await safeFetch('https://openrouter.ai/api/v1/auth/key', {
       headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}` }
     });
-    if (!res.ok) return { status: 'error', code: res.status };
+    if (!res.ok) return { status: 'error', provider: 'OpenRouter', code: res.status };
     const json = await res.json();
     const d = json.data || {};
     const used = d.usage ?? 0;
@@ -79,56 +89,55 @@ async function fetchOpenRouter() {
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
+// Note: The /v1/dashboard/billing/* endpoints require an Org-level API key.
+// Project-scoped keys (sk-proj-...) return HTTP 403 on billing endpoints.
+// We use /v1/models to confirm key validity and list available models instead.
 async function fetchOpenAI() {
   try {
-    const headers = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+    const headers = {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    };
 
-    // Subscription (hard/soft limits)
-    const subRes = await safeFetch(
-      'https://api.openai.com/v1/dashboard/billing/subscription', { headers }
-    );
+    // Use /v1/models — works with project-scoped keys
+    const modelsRes = await safeFetch('https://api.openai.com/v1/models', { headers });
 
-    // Usage for current month
-    const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString().split('T')[0];
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      .toISOString().split('T')[0];
-    const usageRes = await safeFetch(
-      `https://api.openai.com/v1/dashboard/billing/usage?start_date=${start}&end_date=${end}`,
-      { headers }
-    );
+    if (!modelsRes.ok) {
+      return {
+        status: 'error',
+        provider: 'OpenAI',
+        code: modelsRes.status,
+        message: modelsRes.status === 401 ? 'invalid_key' : 'api_error'
+      };
+    }
 
-    if (!subRes.ok) return { status: 'error', provider: 'OpenAI', code: subRes.status };
+    const modelsJson = await modelsRes.json();
+    const allModels = (modelsJson.data ?? []).map(m => m.id);
 
-    const sub = await subRes.json();
-    let usageData = null;
-    if (usageRes.ok) usageData = await usageRes.json();
-
-    const totalUsageCents = usageData?.total_usage ?? 0;
-    const totalUsageUsd = totalUsageCents / 100;
-    const hardLimit = sub.hard_limit_usd ?? sub.system_hard_limit_usd ?? null;
-    const softLimit = sub.soft_limit_usd ?? null;
-    const remaining = hardLimit !== null ? hardLimit - totalUsageUsd : null;
-    const pct = hardLimit ? Math.round((totalUsageUsd / hardLimit) * 100) : 0;
-
-    // Build daily cost trend (last 7 days)
-    const dailyCosts = (usageData?.daily_costs ?? []).slice(-7).map(d => ({
-      date: d.timestamp ? new Date(d.timestamp * 1000).toISOString().split('T')[0] : '?',
-      usd: parseFloat(((d.line_items ?? []).reduce((s, li) => s + (li.cost ?? 0), 0) / 100).toFixed(4))
-    }));
+    // Categorize models
+    const gpt4Models = allModels.filter(m => m.startsWith('gpt-4')).slice(0, 8);
+    const gpt3Models = allModels.filter(m => m.startsWith('gpt-3')).slice(0, 4);
+    const o1Models = allModels.filter(m => m.startsWith('o1') || m.startsWith('o3')).slice(0, 4);
+    const dallEModels = allModels.filter(m => m.includes('dall-e')).slice(0, 3);
+    const whisperModels = allModels.filter(m => m.includes('whisper')).slice(0, 2);
+    const embeddingModels = allModels.filter(m => m.includes('embedding')).slice(0, 3);
 
     return {
       status: 'ok',
       provider: 'OpenAI',
-      used_usd: parseFloat(totalUsageUsd.toFixed(4)),
-      hard_limit_usd: hardLimit,
-      soft_limit_usd: softLimit,
-      balance_usd: remaining !== null ? parseFloat(remaining.toFixed(4)) : null,
-      pct_used: pct,
-      has_payment_method: sub.has_payment_method ?? false,
-      plan: sub.plan?.title ?? 'Unknown',
-      daily_trend: dailyCosts,
+      key_valid: true,
+      key_type: 'project',
+      billing_api: false,
+      billing_note: 'Billing API requires an Org-level key. Showing model access for this project key.',
+      total_models: allModels.length,
+      available_models: {
+        gpt4: gpt4Models,
+        gpt3: gpt3Models,
+        reasoning: o1Models,
+        image: dallEModels,
+        audio: whisperModels,
+        embeddings: embeddingModels
+      },
       fetched_at: new Date().toISOString()
     };
   } catch (e) {
@@ -149,7 +158,7 @@ async function fetchAnthropic() {
     if (!res.ok) return { status: 'error', provider: 'Anthropic', code: res.status };
     const json = await res.json();
     const models = (json.data ?? []).map(m => m.id);
-    const latestClaude = models.filter(m => m.includes('claude')).slice(0, 5);
+    const latestClaude = models.filter(m => m.includes('claude')).slice(0, 8);
     return {
       status: 'ok',
       provider: 'Anthropic',
@@ -166,10 +175,9 @@ async function fetchAnthropic() {
 }
 
 // ── Gemini ────────────────────────────────────────────────────────────────────
-// No public billing API. List models to confirm key validity + availability.
+// No public billing API via AI Studio. List models to confirm key validity.
 async function fetchGemini() {
   try {
-    // Try primary key first, then secondary
     const keys = [
       process.env.GEMINI_API_KEY,
       process.env.GEMINI_API_KEY_2
@@ -183,7 +191,7 @@ async function fetchGemini() {
         if (!res.ok) return { key_index: idx + 1, status: 'error', code: res.status };
         const json = await res.json();
         const models = (json.models ?? []).map(m => m.name.replace('models/', ''));
-        const geminiModels = models.filter(m => m.includes('gemini')).slice(0, 6);
+        const geminiModels = models.filter(m => m.includes('gemini')).slice(0, 8);
         return {
           key_index: idx + 1,
           status: 'ok',
@@ -212,7 +220,6 @@ async function fetchGemini() {
 // ── API Route: /api/ai-credits ────────────────────────────────────────────────
 app.get('/api/ai-credits', async (req, res) => {
   try {
-    // Fetch all providers in parallel
     const [openrouter, openai, anthropic, gemini] = await Promise.all([
       fetchOpenRouter(),
       fetchOpenAI(),
@@ -230,16 +237,26 @@ app.get('/api/ai-credits', async (req, res) => {
 
 // ── API Route: /api/health ────────────────────────────────────────────────────
 app.get('/api/health', (_, res) => {
-  res.json({ status: 'ok', uptime: process.uptime(), ts: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    ts: new Date().toISOString(),
+    keys_loaded: {
+      openai: !!process.env.OPENAI_API_KEY,
+      anthropic: !!process.env.ANTHROPIC_API_KEY,
+      gemini: !!process.env.GEMINI_API_KEY,
+      gemini2: !!process.env.GEMINI_API_KEY_2,
+      openrouter: !!process.env.OPENROUTER_API_KEY
+    }
+  });
 });
 
-// ── SPA fallback ──────────────────────────────────────────────────────────────
 // ── SPA fallback ──────────────────────────────────────────────────────────────
 app.use((_, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`[NEXUS] Secure proxy running on http://localhost:${PORT}`);
-  console.log(`[NEXUS] API keys loaded: OpenAI=${!!process.env.OPENAI_API_KEY} | Anthropic=${!!process.env.ANTHROPIC_API_KEY} | Gemini=${!!process.env.GEMINI_API_KEY} | OpenRouter=${!!process.env.OPENROUTER_API_KEY}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[NEXUS] Secure proxy running on http://0.0.0.0:${PORT}`);
+  console.log(`[NEXUS] API keys loaded: OpenAI=${!!process.env.OPENAI_API_KEY} | Anthropic=${!!process.env.ANTHROPIC_API_KEY} | Gemini=${!!process.env.GEMINI_API_KEY} | Gemini2=${!!process.env.GEMINI_API_KEY_2} | OpenRouter=${!!process.env.OPENROUTER_API_KEY}`);
 });

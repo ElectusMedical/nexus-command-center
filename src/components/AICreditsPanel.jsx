@@ -173,42 +173,55 @@ function OpenRouterCard({ data, onRefresh, nextIn, loading }) {
 // ── OpenAI Card ──────────────────────────────────────────────────────────────
 function OpenAICard({ data, onRefresh, nextIn, loading }) {
   const meta = PROVIDER_META.openai;
+  const [expanded, setExpanded] = useState(false);
+  const models = data.available_models ?? {};
+  const categories = [
+    { key: 'gpt4',       label: 'GPT-4',       list: models.gpt4 ?? [] },
+    { key: 'reasoning',  label: 'Reasoning',   list: models.reasoning ?? [] },
+    { key: 'gpt3',       label: 'GPT-3.5',     list: models.gpt3 ?? [] },
+    { key: 'image',      label: 'Image',        list: models.image ?? [] },
+    { key: 'audio',      label: 'Audio',        list: models.audio ?? [] },
+    { key: 'embeddings', label: 'Embeddings',   list: models.embeddings ?? [] },
+  ].filter(c => c.list.length > 0);
   return (
     <ProviderCard meta={meta} data={data} onRefresh={onRefresh} nextIn={nextIn} loading={loading}
       interval="10 min" renderBody={() => (
         <div className="space-y-3">
-          <div className="flex items-center gap-4">
-            {data.pct_used !== undefined && <GaugeArc pct={data.pct_used} />}
-            <div className="space-y-1.5 flex-1">
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-400">Used (month)</span>
-                <span style={{ color: meta.accent }}>{formatUSD(data.used_usd)}</span>
-              </div>
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-400">Hard Limit</span>
-                <span className="text-slate-200">{formatUSD(data.hard_limit_usd)}</span>
-              </div>
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-400">Soft Limit</span>
-                <span className="text-slate-200">{formatUSD(data.soft_limit_usd)}</span>
-              </div>
-              <div className="flex justify-between text-xs font-mono">
-                <span className="text-slate-400">Remaining</span>
-                <span style={{ color: '#00FF94' }}>{formatUSD(data.balance_usd)}</span>
-              </div>
+          <div className="flex items-center gap-3 p-2 rounded" style={{ background: '#ffffff08' }}>
+            <Key size={14} style={{ color: meta.accent }} />
+            <div>
+              <div className="text-xs font-mono" style={{ color: meta.accent }}>KEY VALID — PROJECT SCOPE</div>
+              <div className="text-xs font-mono text-slate-400">Billing API requires Org-level key</div>
             </div>
           </div>
-          {data.daily_trend && data.daily_trend.length > 0 && (
-            <div className="pt-2 border-t border-slate-700">
-              <div className="text-xs font-mono text-slate-400 mb-2">7-DAY SPEND TREND</div>
-              <Sparkline data={data.daily_trend} color={meta.accent} />
-            </div>
+          {data.billing_note && (
+            <div className="text-xs font-mono text-slate-500 px-1">{data.billing_note}</div>
           )}
-          <div className="flex gap-2 text-xs font-mono">
-            <span className="text-slate-400">Plan:</span>
-            <span style={{ color: meta.accent }}>{data.plan ?? 'Unknown'}</span>
-            {data.has_payment_method && (
-              <span className="px-1.5 py-0.5 rounded" style={{ background: '#10B98120', color: '#34d399' }}>💳 ACTIVE</span>
+          <div className="pt-2 border-t border-slate-700">
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="flex items-center gap-1 text-xs font-mono mb-2 hover:opacity-80"
+              style={{ color: meta.accent }}
+            >
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              {data.total_models ?? 0} MODELS AVAILABLE
+            </button>
+            {expanded && (
+              <div className="space-y-2">
+                {categories.map(cat => (
+                  <div key={cat.key}>
+                    <div className="text-xs font-mono text-slate-500 mb-1">{cat.label}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {cat.list.map(m => (
+                        <div key={m} className="text-xs font-mono px-2 py-0.5 rounded"
+                          style={{ background: '#10B98110', color: '#34d399' }}>
+                          {m}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>

@@ -1,0 +1,22 @@
+# Dependencies — reinstalled during Docker build
+node_modules/
+
+# Local secrets — NEVER bake into image; set in Dokploy UI
+.env
+*.env
+
+# Git metadata
+.git/
+.gitignore
+
+# Dev/CI config
+.github/
+*.log
+
+# Editor
+.vscode/
+.idea/
+
+# Temp
+tmp/
+*.tmp
